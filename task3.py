@@ -56,7 +56,7 @@ def write_batch(batch_df, batch_id):
         .csv(f"outputs/task_3/batch_{batch_id}")
 
 query = final_df.writeStream \
-    .outputMode("append") \
+    .outputMode("update") \
     .foreachBatch(write_batch) \
     .option("checkpointLocation", "checkpoints/task3") \
     .start()
