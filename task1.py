@@ -1,23 +1,34 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import from_json, col
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType, TimestampType
+from pyspark.sql.types import StructType, StringType, DoubleType, TimestampType
 
-# Create a Spark session
-spark = SparkSession.builder.appName("RideSharingAnalytics").getOrCreate()
+spark = SparkSession.builder \
+    .appName("Task1SocketStreaming") \
+    .getOrCreate()
 
-# Define the schema for incoming JSON data
-schema = StructType([
-    StructField("trip_id", StringType(), True),
-    StructField("driver_id", StringType(), True),
-    StructField("distance_km", DoubleType(), True),
-    StructField("fare_amount", DoubleType(), True),
-    StructField("timestamp", StringType(), True)
-])
+spark.sparkContext.setLogLevel("ERROR")
 
-# Read streaming data from socket
+schema = StructType() \
+    .add("trip_id", StringType()) \
+    .add("driver_id", StringType()) \
+    .add("distance_km", DoubleType()) \
+    .add("fare_amount", DoubleType()) \
+    .add("timestamp", StringType())
 
-# Parse JSON data into columns using the defined schema
+raw_df = spark.readStream \
+    .format("socket") \
+    .option("host", "localhost") \
+    .option("port", 9999) \
+    .load()
 
-# Print parsed data to the CSV files
+parsed_df = raw_df.select(
+    from_json(col("value"), schema).alias("data")
+).select("data.*")
+
+query = parsed_df.writeStream \
+    .outputMode("append") \
+    .format("console") \
+    .option("truncate", False) \
+    .start()
 
 query.awaitTermination()

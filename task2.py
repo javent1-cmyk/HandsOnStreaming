@@ -1,26 +1,54 @@
+import os
+
+os.environ["JAVA_HOME"] = "/Library/Java/JavaVirtualMachines/jdk-17.jdk/Contents/Home"
+os.environ["PATH"] = os.environ["JAVA_HOME"] + "/bin:" + os.environ["PATH"]
+
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import from_json, col, avg, sum
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType, TimestampType
+from pyspark.sql.types import StructType, StringType, DoubleType
 
-# Create a Spark session
+spark = SparkSession.builder \
+    .appName("Task2_DriverAggregations") \
+    .config(
+        "spark.sql.streaming.checkpointFileManagerClass",
+        "org.apache.spark.sql.execution.streaming.checkpointing.FileSystemBasedCheckpointFileManager"
+    ) \
+    .getOrCreate()
 
+spark.sparkContext.setLogLevel("ERROR")
 
-# Define the schema for incoming JSON data
+schema = StructType() \
+    .add("trip_id", StringType()) \
+    .add("driver_id", StringType()) \
+    .add("distance_km", DoubleType()) \
+    .add("fare_amount", DoubleType()) \
+    .add("timestamp", StringType())
 
-# Read streaming data from socket
+raw_df = spark.readStream \
+    .format("socket") \
+    .option("host", "localhost") \
+    .option("port", 9999) \
+    .load()
 
-# Parse JSON data into columns using the defined schema
+parsed_df = raw_df.select(
+    from_json(col("value"), schema).alias("data")
+).select("data.*")
 
-# Convert timestamp column to TimestampType and add a watermark
+agg_df = parsed_df.groupBy("driver_id").agg(
+    sum("fare_amount").alias("total_fare_amount"),
+    avg("distance_km").alias("average_distance")
+)
 
-# Compute aggregations: total fare and average distance grouped by driver_id
+def write_batch(batch_df, batch_id):
+    batch_df.write \
+        .mode("overwrite") \
+        .option("header", True) \
+        .csv(f"outputs/task_2/batch_{batch_id}")
 
-# Define a function to write each batch to a CSV file
-
-    # Save the batch DataFrame as a CSV file with the batch ID in the filename
-    
-
-# Use foreachBatch to apply the function to each micro-batch
-
+query = agg_df.writeStream \
+    .outputMode("complete") \
+    .foreachBatch(write_batch) \
+    .option("checkpointLocation", "checkpoints/task2") \
+    .start()
 
 query.awaitTermination()
